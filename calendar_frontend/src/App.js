@@ -1,49 +1,100 @@
-import React, { useState, useEffect } from 'react';
-import logo from './logo.svg';
-import './App.css';
+import React, { useEffect, useMemo, useState } from "react";
+import "./App.css";
+import Navbar from "./components/Navbar";
+import CalendarGrid from "./components/CalendarGrid";
+import EventFormModal from "./components/EventFormModal";
+import UpcomingEvents from "./components/UpcomingEvents";
+import { loadEvents, saveEvents } from "./utils/storage";
+
+/**
+ * Event shape:
+ * { id: string, title: string, date: 'YYYY-MM-DD', time?: 'HH:MM', notes?: string, createdAt: number }
+ */
 
 // PUBLIC_INTERFACE
-function App() {
-  const [theme, setTheme] = useState('light');
+export default function App() {
+  /** Calendar application root. */
+  const [viewDate, setViewDate] = useState(() => new Date());
+  const [events, setEvents] = useState(() => loadEvents());
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [prefillDate, setPrefillDate] = useState("");
 
-  // Effect to apply theme to document element
+  // Persist events to localStorage
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
+    saveEvents(events);
+  }, [events]);
 
-  // PUBLIC_INTERFACE
-  const toggleTheme = () => {
-    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
+  const eventsByDay = useMemo(() => {
+    const map = new Map();
+    for (const ev of events) {
+      const arr = map.get(ev.date) || [];
+      arr.push(ev);
+      map.set(ev.date, arr);
+    }
+    // Keep each day bucket sorted (date same, sort by time)
+    for (const [k, arr] of map.entries()) {
+      arr.sort((a, b) => {
+        const at = a.time || "";
+        const bt = b.time || "";
+        if (at === bt) return 0;
+        return at < bt ? -1 : 1;
+      });
+      map.set(k, arr);
+    }
+    return map;
+  }, [events]);
+
+  const openAddEvent = (dateKey) => {
+    setPrefillDate(dateKey || "");
+    setIsModalOpen(true);
+  };
+
+  const closeAddEvent = () => setIsModalOpen(false);
+
+  const handleSelectDay = (dayKey) => {
+    // Selecting a day opens modal with date prefilled (simple and fast UX).
+    openAddEvent(dayKey);
+  };
+
+  const handleCreateEvent = (data) => {
+    const newEvent = {
+      id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      title: data.title,
+      date: data.date,
+      time: data.time,
+      notes: data.notes,
+      createdAt: Date.now(),
+    };
+    setEvents((prev) => [...prev, newEvent]);
   };
 
   return (
-    <div className="App">
-      <header className="App-header">
-        <button 
-          className="theme-toggle" 
-          onClick={toggleTheme}
-          aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-        >
-          {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
-        </button>
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <p>
-          Current theme: <strong>{theme}</strong>
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+    <div className="appShell">
+      <Navbar onAddEvent={() => openAddEvent("")} />
+
+      <main className="container">
+        <div className="layout">
+          <div className="layout__main">
+            <CalendarGrid
+              viewDate={viewDate}
+              onChangeViewDate={setViewDate}
+              eventsByDay={eventsByDay}
+              onSelectDay={handleSelectDay}
+            />
+          </div>
+
+          <div className="layout__side">
+            <UpcomingEvents events={events} onAddEvent={() => openAddEvent("")} />
+          </div>
+        </div>
+      </main>
+
+      <EventFormModal
+        isOpen={isModalOpen}
+        initialDate={prefillDate}
+        onClose={closeAddEvent}
+        onCreateEvent={handleCreateEvent}
+      />
     </div>
   );
 }
-
-export default App;
